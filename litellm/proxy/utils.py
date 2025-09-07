@@ -1505,7 +1505,7 @@ class ProxyLogging:
                     raise e
         return response
 
-    def async_post_call_streaming_iterator_hook(
+    async def async_post_call_streaming_iterator_hook(
         self,
         response,
         user_api_key_dict: UserAPIKeyAuth,
@@ -1518,6 +1518,8 @@ class ProxyLogging:
         Covers:
         1. /chat/completions
         """
+        current_response = response
+        
         for callback in litellm.callbacks:
             _callback: Optional[CustomLogger] = None
             if isinstance(callback, str):
@@ -1532,12 +1534,22 @@ class ProxyLogging:
                 ) or _callback.should_run_guardrail(
                     data=request_data, event_type=GuardrailEventHooks.post_call
                 ):
-                    response = _callback.async_post_call_streaming_iterator_hook(
-                        user_api_key_dict=user_api_key_dict,
-                        response=response,
-                        request_data=request_data,
-                    )
-        return response
+                    try:
+                        # Chain the async generators - each callback transforms the stream
+                        current_response = _callback.async_post_call_streaming_iterator_hook(
+                            user_api_key_dict=user_api_key_dict,
+                            response=current_response,
+                            request_data=request_data,
+                        )
+                    except Exception as e:
+                        # Log callback errors but don't break the streaming chain
+                        litellm._logging.verbose_proxy_logger.error(
+                            f"Error in streaming callback {callback}: {str(e)}"
+                        )
+                
+        # Now iterate through the final chained response
+        async for chunk in current_response:
+            yield chunk
 
     def _init_response_taking_too_long_task(self, data: Optional[dict] = None):
         """
