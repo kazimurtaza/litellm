@@ -1520,6 +1520,9 @@ class ProxyLogging:
         """
         current_response = response
         
+        print(f"🔥 DEBUG: ProxyLogging streaming hook called with {len(litellm.callbacks)} callbacks")
+        litellm._logging.verbose_proxy_logger.info(f"🔥 DEBUG: ProxyLogging streaming hook called with {len(litellm.callbacks)} callbacks")
+        
         for callback in litellm.callbacks:
             _callback: Optional[CustomLogger] = None
             if isinstance(callback, str):
@@ -1535,14 +1538,18 @@ class ProxyLogging:
                     data=request_data, event_type=GuardrailEventHooks.post_call
                 ):
                     try:
+                        print(f"🔥 DEBUG: Calling streaming hook on callback: {type(_callback)}")
+                        litellm._logging.verbose_proxy_logger.info(f"🔥 DEBUG: Calling streaming hook on callback: {type(_callback)}")
                         # Chain the async generators - each callback transforms the stream
                         current_response = _callback.async_post_call_streaming_iterator_hook(
                             user_api_key_dict=user_api_key_dict,
                             response=current_response,
                             request_data=request_data,
                         )
+                        print(f"🔥 DEBUG: Streaming hook call successful for: {type(_callback)}")
                     except Exception as e:
                         # Log callback errors but don't break the streaming chain
+                        print(f"❌ ERROR in streaming callback {callback}: {str(e)}")
                         litellm._logging.verbose_proxy_logger.error(
                             f"Error in streaming callback {callback}: {str(e)}"
                         )

@@ -555,6 +555,24 @@ async def proxy_shutdown_event():
 async def proxy_startup_event(app: FastAPI):
     global prisma_client, master_key, use_background_health_checks, llm_router, llm_model_list, general_settings, proxy_budget_rescheduler_min_time, proxy_budget_rescheduler_max_time, litellm_proxy_admin_name, db_writer_client, store_model_in_db, premium_user, _license_check, proxy_batch_polling_interval
     import json
+    import os
+
+    # HARMONY CONVERTER WORKER INJECTION - Register in each worker process
+    try:
+        import litellm
+        import harmony_converter_fixed
+        callback_obj = harmony_converter_fixed.harmony_converter
+        
+        if callback_obj not in litellm.callbacks:
+            litellm.callbacks.append(callback_obj)
+            verbose_proxy_logger.info("🎯 WORKER: Harmony converter registered in worker process")
+            print(f"🎯 WORKER: Harmony converter registered in worker process {os.getpid()}")
+        else:
+            verbose_proxy_logger.info("✅ WORKER: Harmony converter already registered")
+    except Exception as e:
+        verbose_proxy_logger.error(f"❌ WORKER: Failed to register Harmony converter: {e}")
+        print(f"❌ WORKER: Failed to register Harmony converter: {e}")
+    # END HARMONY CONVERTER WORKER INJECTION
 
     init_verbose_loggers()
     ## CHECK PREMIUM USER
@@ -3430,6 +3448,8 @@ async def async_assistants_data_generator(
 async def async_data_generator(
     response, user_api_key_dict: UserAPIKeyAuth, request_data: dict
 ):
+    print("🎯 STREAM DEBUG: async_data_generator called")
+    verbose_proxy_logger.info("🎯 STREAM DEBUG: async_data_generator called")
     verbose_proxy_logger.debug("inside generator")
     try:
         str_so_far = ""
