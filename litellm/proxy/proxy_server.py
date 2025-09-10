@@ -3462,6 +3462,15 @@ async def async_data_generator(
             verbose_proxy_logger.debug(
                 "async_data_generator: received streaming chunk - {}".format(chunk)
             )
+            
+            # DEBUG: Check chunk content after iterator hook
+            if hasattr(chunk, 'choices') and chunk.choices and len(chunk.choices) > 0:
+                if hasattr(chunk.choices[0], 'delta') and chunk.choices[0].delta:
+                    content = getattr(chunk.choices[0].delta, 'content', None)
+                    if content and '<|channel|>' in content:
+                        verbose_proxy_logger.info(f"🚨 DEBUG: Raw tokens still in chunk after iterator hook: {content[:50]}")
+                    elif content and '<think>' in content:
+                        verbose_proxy_logger.info(f"✅ DEBUG: Converted content in chunk: {content[:50]}")
 
             ### CALL HOOKS ### - modify outgoing data
             chunk = await proxy_logging_obj.async_post_call_streaming_hook(
@@ -3470,11 +3479,31 @@ async def async_data_generator(
                 data=request_data,
                 str_so_far=str_so_far,
             )
+            
+            # DEBUG: Check chunk content after second hook
+            if hasattr(chunk, 'choices') and chunk.choices and len(chunk.choices) > 0:
+                if hasattr(chunk.choices[0], 'delta') and chunk.choices[0].delta:
+                    content = getattr(chunk.choices[0].delta, 'content', None)
+                    if content and '<|channel|>' in content:
+                        verbose_proxy_logger.info(f"🚨 DEBUG AFTER 2nd HOOK: Raw tokens STILL present: {content[:50]}")
+                    elif content and '<think>' in content:
+                        verbose_proxy_logger.info(f"✅ DEBUG AFTER 2nd HOOK: Converted content preserved: {content[:50]}")
 
             if isinstance(chunk, (ModelResponse, ModelResponseStream)):
                 response_str = litellm.get_response_string(response_obj=chunk)
                 str_so_far += response_str
 
+            # Filter out empty content chunks (from Harmony converter buffering)
+            if isinstance(chunk, (ModelResponse, ModelResponseStream)):
+                if hasattr(chunk, 'choices') and chunk.choices and len(chunk.choices) > 0:
+                    choice = chunk.choices[0]
+                    if hasattr(choice, 'delta') and choice.delta:
+                        content = getattr(choice.delta, 'content', None)
+                        # Skip chunks with empty content (buffered by Harmony converter)
+                        if content == "":
+                            verbose_proxy_logger.debug("🔇 Filtering empty chunk from Harmony buffering")
+                            continue
+            
             if isinstance(chunk, BaseModel):
                 chunk = chunk.model_dump_json(exclude_none=True, exclude_unset=True)
             elif isinstance(chunk, str) and chunk.startswith("data: "):
